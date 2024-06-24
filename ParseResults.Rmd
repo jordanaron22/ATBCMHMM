@@ -1,0 +1,173 @@
+---
+title: "ParseSim"
+output: html_document
+date: "2024-06-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# options(knitr.table.format = 'markdown')
+```
+
+```{r, echo =FALSE}
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+library(scales)
+
+expit <- function(x){
+  to_ret <- exp(x) / (1+exp(x))
+  if (is.na(to_ret)){return(1)}
+  return(to_ret)
+}
+
+logit <- function(x){
+  return(log(x/(1-x)))
+}
+
+Param2TranHelper <- function(p12,p21){
+  tran <- matrix(0,2,2)
+  tran[1,2] <- expit(p12)
+  tran[1,1] <- 1- tran[1,2]
+  tran[2,1] <- expit(p21)
+  tran[2,2] <- 1 - tran[2,1]
+  return(tran)
+}
+ListElementSub <- function(list1,list2){
+  for (i in 1:length(list1)){
+    list1[[i]] <- list1[[i]] - list2[[i]]
+  }
+  return(list1)
+}
+```
+
+```{r,results = 'asis',echo=FALSE}
+
+#Loads all files
+#Chooses lowest BIC
+
+setwd("Results/")
+file_list <- list.files()
+temp <- file_list[2]
+file_list <- file_list[-2]
+file_list[10] <- temp
+num_files <- length(file_list)
+
+
+BIC_vec <- numeric(num_files)
+
+init_list <- list()
+tran_list <- list()
+emit_list <- list()
+pi_list <- list()
+
+for (file_ind in 1:num_files){
+  load(file_list[file_ind])
+  BIC_vec[file_ind] <- to_save[[2]]
+}
+
+df <- data.frame(MHMM = paste0("MHMM",c(1:num_files)),
+                 BIC = BIC_vec)
+
+df$MHMM  <- factor(df$MHMM , levels = paste0("MHMM",c(1:num_files)))
+
+ggplot(df, aes(x=MHMM, y=BIC)) + 
+  geom_bar(stat = "identity") + 
+  scale_y_continuous(limits=c(min(BIC_vec),max(BIC_vec)),oob = rescale_none)+
+  geom_text(aes(label = round(BIC)), vjust = 0) + 
+  labs(title = "BIC by Model (number of HMMs)",
+       subtitle = "MHMM with 6 HMMs has the lowest BIC",
+       x = "Model (MHMM7 is a Mixture of HMMs with 7 HMMs)")
+
+which.min(BIC_vec)
+
+for (file_ind in 1:num_files){
+  load(file_list[file_ind])
+  num_hmm <- dim(to_save[[1]][[1]])[1] 
+  
+  init_df <- data.frame(P1=double(),
+                 stringsAsFactors=FALSE)
+  
+  tran_df <- data.frame(P00=double(),
+                        P11=double(),
+                 stringsAsFactors=FALSE)
+  
+  emit_df <- data.frame("S0"=double(),
+                        "S1"=double(),
+                 stringsAsFactors=FALSE)
+  
+  
+  pi_df <- data.frame(MixingProp=double(),
+                 stringsAsFactors=FALSE)
+  
+  hmm_names <- paste("HMM",c(1:num_hmm))
+  sym_names <- c("Anxiety", "Depression", "Memory", "Concentrate", "Fatigue", "Appetite", "Insomnia")
+  
+  
+  init <- to_save[[1]][[1]]
+  tran <- to_save[[1]][[2]]
+  emit <- to_save[[1]][[3]]
+  pi_l <- to_save[[1]][[4]]
+  
+  for (i in 1:num_hmm){
+    init_df[i,] <- init[i,2]
+    tran_df[i,] <- diag(tran[,,i])
+    pi_df[i,] <- pi_l[i]
+  }  
+  
+  for (i in 1:7){
+    emit_df[i,] <- emit[,2,i]
+  }
+  
+  init_df <- round(init_df,4)
+  tran_df <- round(tran_df,4)
+  emit_df <- round(emit_df,4)
+  pi_df <- round(pi_df,4)
+  
+  rownames(init_df) <- hmm_names
+  rownames(tran_df) <- hmm_names
+  rownames(pi_df) <- hmm_names
+  
+  rownames(emit_df) <- sym_names
+  
+  
+  cat('\n')  
+  cat("# Results for MHMM with ", num_hmm, " HMMs \n") 
+  
+  
+  cat("#### Initial Probabilities \n") 
+  
+  kbl(init_df,caption = "<center><strong>Prob of starting in the depressed state</strong></center>") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = T) %>%
+    cat()
+  
+  cat("#### Transition Probabilities \n")  
+  
+  kbl(tran_df,caption = "<center><strong>Transition prob. P00 is 0 -> 0. P11 is 1 -> 1. 1 is the depressed state</strong></center>") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = T) %>%
+    cat()
+  
+  cat("#### Emission Probabilities \n") 
+  
+  kbl(emit_df,caption = "<center><strong>Symptom prob given underlying state. 1 is the depressed state</strong></center>") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = T) %>%
+    cat()
+  
+  cat("#### Mixing Proportion \n") 
+  
+  kbl(pi_df,caption = "<center><strong>Proportion of each HMM </strong></center>") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+                  full_width = T) %>%
+    cat()
+  
+  cat('\n')
+
+}
+
+
+
+```
+
